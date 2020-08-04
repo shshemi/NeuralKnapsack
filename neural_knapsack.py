@@ -1,11 +1,6 @@
 import os
 import numpy as np
-from keras.models import Model
-from keras.layers import Dense, Activation, Lambda, Input, Concatenate, Multiply
-from keras.metrics import binary_accuracy
-from keras.losses import binary_crossentropy
-from keras.callbacks import ModelCheckpoint
-import keras.backend as K
+import tensorflow as tf
 
 
 def brute_force_knapsack(x_weights, x_prices, x_capacity):
@@ -34,8 +29,8 @@ def create_knapsack(item_count=5):
 def knapsack_loss(input_weights, input_prices, cvc):
     def loss(y_true, y_pred):
         picks = y_pred
-        violation = K.maximum(K.batch_dot(picks, input_weights, 1) - 1, 0)
-        price = K.batch_dot(picks, input_prices, 1)
+        violation = tf.keras.backend.maximum(tf.keras.backend.batch_dot(picks, input_weights, 1) - 1, 0)
+        price = tf.keras.backend.batch_dot(picks, input_prices, 1)
         return cvc * violation - price
 
     return loss
@@ -43,52 +38,52 @@ def knapsack_loss(input_weights, input_prices, cvc):
 
 def metric_overprice(input_prices):
     def overpricing(y_true, y_pred):
-        y_pred = K.round(y_pred)
-        return K.mean(K.batch_dot(y_pred, input_prices, 1) - K.batch_dot(y_true, input_prices, 1))
+        y_pred = tf.keras.backend.round(y_pred)
+        return tf.keras.backend.mean(tf.keras.backend.batch_dot(y_pred, input_prices, 1) - tf.keras.backend.batch_dot(y_true, input_prices, 1))
 
     return overpricing
 
 
 def metric_space_violation(input_weights):
     def space_violation(y_true, y_pred):
-        y_pred = K.round(y_pred)
-        return K.mean(K.maximum(K.batch_dot(y_pred, input_weights, 1) - 1, 0))
+        y_pred = tf.keras.backend.round(y_pred)
+        return tf.keras.backend.mean(tf.keras.backend.maximum(tf.keras.backend.batch_dot(y_pred, input_weights, 1) - 1, 0))
 
     return space_violation
 
 
 def metric_pick_count():
     def pick_count(y_true, y_pred):
-        y_pred = K.round(y_pred)
-        return K.mean(K.sum(y_pred, -1))
+        y_pred = tf.keras.backend.round(y_pred)
+        return tf.keras.backend.mean(tf.keras.backend.sum(y_pred, -1))
 
     return pick_count
 
 
 def unsupervised_model(cvc=5.75, item_count=5):
-    input_weights = Input((item_count,))
-    input_prices = Input((item_count,))
-    inputs_concat = Concatenate()([input_weights, input_prices])
-    picks = Dense(item_count ** 2 + item_count * 2, activation="sigmoid")(inputs_concat)
-    picks = Dense(item_count, activation="sigmoid")(picks)
-    model = Model(inputs=[input_weights, input_prices], outputs=[picks])
+    input_weights = tf.keras.Input((item_count,))
+    input_prices = tf.keras.Input((item_count,))
+    inputs_concat = tf.keras.layers.Concatenate()([input_weights, input_prices])
+    picks = tf.keras.layers.Dense(item_count ** 2 + item_count * 2, activation="sigmoid")(inputs_concat)
+    picks = tf.keras.layers.Dense(item_count, activation="sigmoid")(picks)
+    model = tf.keras.Model(inputs=[input_weights, input_prices], outputs=[picks])
     model.compile("adam",
                   knapsack_loss(input_weights, input_prices, cvc),
-                  metrics=[binary_accuracy, metric_space_violation(input_weights),
+                  metrics=[tf.keras.metrics.binary_accuracy, metric_space_violation(input_weights),
                            metric_overprice(input_prices), metric_pick_count()])
     return model
 
 
 def supervised_model(item_count=5):
-    input_weights = Input((item_count,), name="Weights")
-    input_prices = Input((item_count,), name="Prices")
-    inputs_concat = Concatenate(name="Concatenate")([input_weights, input_prices])
-    picks = Dense(item_count ** 2 + item_count * 2, activation="sigmoid", name="Hidden")(inputs_concat)
-    picks = Dense(item_count, activation="sigmoid", name="Output")(picks)
-    model = Model(inputs=[input_weights, input_prices], outputs=[picks])
+    input_weights = tf.keras.Input((item_count,), name="Weights")
+    input_prices = tf.keras.Input((item_count,), name="Prices")
+    inputs_concat = tf.keras.layers.Concatenate(name="Concatenate")([input_weights, input_prices])
+    picks = tf.keras.layers.Dense(item_count ** 2 + item_count * 2, activation="sigmoid", name="Hidden")(inputs_concat)
+    picks = tf.keras.layers.Dense(item_count, activation="sigmoid", name="Output")(picks)
+    model = tf.keras.Model(inputs=[input_weights, input_prices], outputs=[picks])
     model.compile("adam",
-                  binary_crossentropy,
-                  metrics=[binary_accuracy, metric_space_violation(input_weights),
+                  tf.keras.losses.binary_crossentropy,
+                  metrics=[tf.keras.metrics.binary_accuracy, metric_space_violation(input_weights),
                            metric_overprice(input_prices), metric_pick_count()])
     return model
 
@@ -107,9 +102,10 @@ def create_knapsack_dataset(count):
 
 def train_knapsack(model, train_x, train_y, test_x, test_y):
     if os.path.exists("best_model.h5"): os.remove("best_model.h5")
-    model.fit(train_x, train_y, epochs=512, verbose=0,
-              callbacks=[ModelCheckpoint("best_model.h5", monitor="binary_accuracy", save_best_only=True,
-                                         save_weights_only=True)])
+    model.fit(train_x, train_y, epochs=512, verbose=1,
+              callbacks=[
+                  tf.keras.callbacks.ModelCheckpoint("best_model.h5", monitor="binary_accuracy", save_best_only=True,
+                                                     save_weights_only=True)])
     model.load_weights("best_model.h5")
     train_results = model.evaluate(train_x, train_y, 64, 0)
     test_results = model.evaluate(test_x, test_y, 64, 0)
@@ -122,6 +118,7 @@ def train_knapsack(model, train_x, train_y, test_x, test_y):
 
 
 if __name__ == "__main__":
+    tf.compat.v1.disable_eager_execution()
     train_x, train_y = create_knapsack_dataset(10000)
     test_x, test_y = create_knapsack_dataset(200)
     model = supervised_model()
