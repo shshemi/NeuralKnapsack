@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
+import knapsack
 
 
 def brute_force_knapsack(x_weights, x_prices, x_capacity):
@@ -15,6 +16,11 @@ def brute_force_knapsack(x_weights, x_prices, x_capacity):
         if weight <= x_capacity and price > best_price:
             best_price = price
             best_picks = picks
+    return best_picks
+
+
+def fast_knapsack(x_weights, x_prices, x_capacity):
+    best_price, best_picks = knapsack.knapsack(x_weights, x_prices).solve(x_capacity)
     return best_picks
 
 
